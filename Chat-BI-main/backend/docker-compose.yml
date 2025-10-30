@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15  # 使用标准PostgreSQL镜像
+    container_name: chatbi-postgres
+    environment:
+      POSTGRES_DB: chabi_template
+      POSTGRES_USER: aigcgen
+      POSTGRES_PASSWORD: 'Louis!123456'
+    ports:
+      - "5433:5432"  # 更改主机端口以避免冲突
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:6.2
+    container_name: chatbi-redis
+    ports:
+      - "6388:6379"
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: chatbi-minio
+    ports:
+      - "9000:9000"  # API端口
+      - "9001:9001"  # Web Console端口
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: chatbi-qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+
+volumes:
+  postgis_data:
+  redis_data:
+  minio_data:
+  qdrant_data:

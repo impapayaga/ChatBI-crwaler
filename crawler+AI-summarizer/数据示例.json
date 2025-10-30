@@ -1,0 +1,65 @@
+{
+  "policies_example": [
+    {
+      "id": 1,
+      "title": "北京市加快人工智能基础科学研究发展行动计划（2025-2027年）",
+      "source": "北京市政府",
+      "url": "https://www.beijing.gov.cn/zhengce/zhengcefagui/./202507/t20250722_4154767.html",
+      "publish_date": "2025年7月4日",
+      "publish_unit": "北京市科学技术委员会",
+      "keywords_found": "人工智能",
+      "content": "为深入贯彻落实习近平总书记关于人工智能发展的重要指示精神，加快推动北京人工智能基础科学研究发展，制定本行动计划...",
+      "created_at": "2024-01-01T00:00:00"
+    },
+    {
+      "id": 2,
+      "title": "广东省关于促进生物医药产业高质量发展的若干措施",
+      "source": "广东省政府",
+      "url": "https://www.gd.gov.cn/zwgk/wjk/qbwj/index.html",
+      "publish_date": "2024年3月15日",
+      "publish_unit": "广东省人民政府办公厅",
+      "keywords_found": "生物医药",
+      "content": "为深入贯彻落实国家关于生物医药产业发展的决策部署，加快推动广东省生物医药产业高质量发展...",
+      "created_at": "2024-01-01T00:00:00"
+    }
+  ],
+  "summaries_example": [
+    {
+      "id": 1,
+      "title": "北京市加快人工智能基础科学研究发展行动计划（2025-2027年）",
+      "publish_unit": "北京市科学技术委员会",
+      "publish_date": "2025年7月4日",
+      "summary": "该行动计划旨在通过人工智能基础科学研究，推动北京在全球范围内形成具有影响力的AI创新源。计划重点支持机器学习、深度学习、自然语言处理等前沿技术研究，建设一批高水平AI实验室，培养AI领域顶尖人才，打造AI产业生态圈。",
+      "url": "https://www.beijing.gov.cn/zhengce/zhengcefagui/./202507/t20250722_4154767.html",
+      "created_at": "2024-01-01T00:00:00"
+    },
+    {
+      "id": 2,
+      "title": "广东省关于促进生物医药产业高质量发展的若干措施",
+      "publish_unit": "广东省人民政府办公厅",
+      "publish_date": "2024年3月15日",
+      "summary": "该措施旨在推动广东省生物医药产业高质量发展，重点支持创新药物研发、医疗器械制造、生物技术应用等领域。通过政策扶持、资金支持、人才引进等措施，打造具有国际竞争力的生物医药产业集群。",
+      "url": "https://www.gd.gov.cn/zwgk/wjk/qbwj/index.html",
+      "created_at": "2024-01-01T00:00:00"
+    }
+  ],
+  "stats_example": {
+    "total_policies": 23,
+    "total_summaries": 22,
+    "beijing_policies": 19,
+    "guangdong_policies": 4
+  },
+  "api_responses_example": {
+    "crawl_response": {
+      "success": true,
+      "message": "爬取完成，新增 5 条政策文件",
+      "total_found": 5
+    },
+    "summarize_response": {
+      "success": true,
+      "message": "AI总结完成，新增 3 条总结",
+      "processed_count": 3
+    }
+  }
+}
+

@@ -1,0 +1,23 @@
+# 忽略所有的 .log 文件
+*.log
+
+# 忽略所有的 .sql 文件
+*.sql
+
+# 忽略 node_modules 目录
+node_modules/
+
+# 忽略所有的 .env 文件
+*.env
+
+# 忽略所有的 .DS_Store 文件（macOS 系统文件）
+.DS_Store
+
+# 忽略所有的 __pycache__ 目录
+__pycache__/
+
+# 忽略所有的 .idea 目录（例如 PyCharm 项目文件）
+.idea/
+
+# 忽略 mock 目录下的文件，但保留文件夹
+mock/*

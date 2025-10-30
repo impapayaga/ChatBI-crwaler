@@ -1,0 +1,34 @@
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+pydantic
+requests
+python-dotenv
+pandas
+plotly
+kaleido
+psycopg2-binary
+python-multipart
+
+# 文件存储与解析
+minio>=7.2.0
+pyarrow>=14.0.0
+openpyxl>=3.1.0
+xlrd>=2.0.1
+
+# 列式数据库
+duckdb>=0.9.0
+
+# 向量数据库
+qdrant-client>=1.7.0
+
+# AI/Embedding
+openai>=1.10.0
+
+# 异步redis
+redis>=5.0.0
+
+# 异步文件操作
+aiofiles>=23.0.0
+

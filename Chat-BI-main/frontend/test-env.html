@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>环境变量测试</title>
+</head>
+<body>
+    <h1>环境变量测试</h1>
+    <div id="output"></div>
+    
+    <script type="module">
+        // 测试环境变量
+        const output = document.getElementById('output');
+        
+        // 检查环境变量
+        const chatbiApi = import.meta.env.VITE_API_BASE_URL;
+        const crawlerApi = import.meta.env.VITE_CRAWLER_API_BASE_URL;
+        
+        output.innerHTML = `
+            <p>ChatBI API: ${chatbiApi || '未定义'}</p>
+            <p>Crawler API: ${crawlerApi || '未定义'}</p>
+        `;
+        
+        // 测试API调用
+        if (crawlerApi) {
+            fetch(`${crawlerApi}/api/scraper/sources`)
+                .then(response => response.json())
+                .then(data => {
+                    output.innerHTML += `<p>API测试成功: ${JSON.stringify(data)}</p>`;
+                })
+                .catch(error => {
+                    output.innerHTML += `<p>API测试失败: ${error.message}</p>`;
+                });
+        }
+    </script>
+</body>
+</html>

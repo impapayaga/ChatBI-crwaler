@@ -1,0 +1,11 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+sqlalchemy==2.0.23
+# sqlite3 is built-in with Python
+schedule==1.2.0
+python-multipart==0.0.6
+pydantic==2.5.0
+httpx==0.25.2
