@@ -3,7 +3,7 @@ AI模型选择API端点
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from api.dependencies.dependencies import get_async_session
 from services.model_cache_service import ModelCacheService
 import logging
@@ -14,12 +14,14 @@ logger = logging.getLogger(__name__)
 
 class ModelSelectionRequest(BaseModel):
     """模型选择请求"""
+    model_config = ConfigDict(protected_namespaces=())
     user_id: int
     model_id: int
 
 
 class ModelSelectionResponse(BaseModel):
     """模型选择响应"""
+    model_config = ConfigDict(protected_namespaces=())
     success: bool
     message: str
     model_data: dict = None

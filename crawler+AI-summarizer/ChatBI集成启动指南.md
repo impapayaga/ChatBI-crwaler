@@ -75,8 +75,7 @@ python adapter_api.py
 
 ```bash
 # 新开一个终端，进入ChatBI前端目录
-cd C:\Users\KC\Desktop\POC\Chat-BI-main\frontend
-
+cd desktop/POC/Chat-BI-main/frontend
 # 启动前端服务
 pnpm dev
 

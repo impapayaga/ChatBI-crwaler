@@ -18,6 +18,190 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def detect_header_rows(
+    file_data: bytes, 
+    engine: str = 'openpyxl', 
+    max_rows: int = 10,
+    min_data_confidence: float = 0.7
+) -> List[int]:
+    """
+    智能检测Excel表头行数（支持任意层级）
+    
+    策略：动态检测，直到遇到明显的数据行为止
+    
+    Args:
+        file_data: Excel文件数据（bytes）
+        engine: pandas读取引擎
+        max_rows: 最大检测行数（防止无限循环，默认10行）
+        min_data_confidence: 判断为数据行的最小置信度（0-1）
+    
+    Returns:
+        表头行索引列表，例如 [0] 表示单行表头，[0, 1, 2] 表示三行表头
+    """
+    try:
+        # 读取更多行用于检测（增加检测范围）
+        preview_buffer = io.BytesIO(file_data)
+        preview_df = pd.read_excel(
+            preview_buffer,
+            nrows=max_rows + 2,  # 多读几行，用于对比判断
+            header=None,
+            engine=engine
+        )
+        
+        if len(preview_df) == 0:
+            return [0]
+        
+        # 检查每行的特征，动态判断
+        header_candidates = [0]  # 至少第一行是表头
+        
+        for i in range(1, min(max_rows, len(preview_df))):
+            row = preview_df.iloc[i]
+            
+            if len(row) == 0:
+                # 空行，跳过
+                continue
+            
+            # 计算各种特征
+            null_ratio = row.isna().sum() / len(row)
+            unique_ratio = row.nunique() / len(row)
+            
+            # 检查数据类型：表头通常是字符串，数据行通常有数值
+            string_count = sum(1 for val in row if pd.notna(val) and isinstance(val, str))
+            numeric_count = sum(1 for val in row if pd.notna(val) and isinstance(val, (int, float)))
+            string_ratio = string_count / len(row) if len(row) > 0 else 0
+            numeric_ratio = numeric_count / len(row) if len(row) > 0 else 0
+            
+            # 判断是否为表头行的综合指标
+            is_likely_header = False
+            
+            # 条件1：空值比例高（可能是合并单元格）
+            if null_ratio > 0.3:
+                is_likely_header = True
+            
+            # 条件2：唯一值比例低（可能是重复的表头结构）
+            elif unique_ratio < 0.5:
+                is_likely_header = True
+            
+            # 条件3：整行都是字符串（更可能是表头）
+            elif string_ratio > 0.8 and numeric_ratio < 0.2:
+                is_likely_header = True
+            
+            # 条件4：与上一行对比，如果结构相似（都有空值），可能是同一层级表头
+            if i > 0:
+                prev_row = preview_df.iloc[i-1]
+                prev_null_ratio = prev_row.isna().sum() / len(prev_row) if len(prev_row) > 0 else 0
+                # 如果两行都有较高的空值比例，可能是多层级表头
+                if null_ratio > 0.2 and prev_null_ratio > 0.2:
+                    is_likely_header = True
+            
+            if is_likely_header:
+                header_candidates.append(i)
+            else:
+                # 这一行看起来像数据，停止检测
+                # 但需要确认：如果数值比例很高，几乎肯定是数据行
+                if numeric_ratio > min_data_confidence:
+                    logger.info(f"在第 {i+1} 行检测到数据特征（数值比例: {numeric_ratio:.2f}），停止检测")
+                    break
+        
+        # 如果检测到多行表头，返回所有候选行
+        if len(header_candidates) > 1:
+            logger.info(f"检测到 {len(header_candidates)} 行表头: {header_candidates}")
+            return header_candidates
+        
+        # 默认单行表头
+        return [0]
+    except Exception as e:
+        logger.warning(f"表头行数检测失败，使用单行表头: {e}")
+        return [0]  # 失败时降级为单行表头
+
+
+def read_excel_with_multilevel_header(
+    file_data: bytes, 
+    engine: str = 'openpyxl',
+    detect_headers: bool = True
+) -> pd.DataFrame:
+    """
+    读取Excel，自动处理多行表头
+    
+    Args:
+        file_data: Excel文件数据（bytes）
+        engine: pandas读取引擎
+        detect_headers: 是否自动检测表头行数
+    
+    Returns:
+        处理后的DataFrame，多行表头已合并为单层列名
+    """
+    file_buffer = io.BytesIO(file_data)
+    
+    try:
+        if detect_headers:
+            # 尝试检测表头行数（支持任意层级）
+            header_rows = detect_header_rows(file_data, engine, max_rows=10)
+            file_buffer.seek(0)
+        else:
+            header_rows = [0]
+        
+        # 读取数据
+        if len(header_rows) > 1:
+            # 多行表头：使用MultiIndex
+            logger.info(f"使用多行表头读取: header={header_rows}")
+            df = pd.read_excel(
+                file_buffer,
+                header=header_rows,
+                engine=engine
+            )
+            
+            # 将MultiIndex转换为单层列名
+            # 处理逻辑：合并非空值，用下划线连接
+            def merge_column_names(col_tuple):
+                """合并MultiIndex列名为单个字符串"""
+                # 过滤掉空值、nan、空字符串
+                parts = []
+                for col in col_tuple:
+                    col_str = str(col).strip()
+                    if col_str and col_str.lower() not in ['nan', 'none', '']:
+                        parts.append(col_str)
+                
+                # 用下划线连接
+                merged = '_'.join(parts)
+                
+                # 如果合并后为空，使用默认列名
+                return merged if merged else None
+            
+            # 转换列名
+            new_columns = []
+            for i, col_tuple in enumerate(df.columns.values):
+                merged_name = merge_column_names(col_tuple)
+                if merged_name:
+                    new_columns.append(merged_name)
+                else:
+                    new_columns.append(f'Column_{i}')
+            
+            df.columns = new_columns
+            
+            logger.info(f"多表头合并完成，列名示例: {new_columns[:5]}")
+            
+        else:
+            # 单行表头：正常读取
+            df = pd.read_excel(
+                file_buffer,
+                header=0,
+                engine=engine
+            )
+        
+        return df
+        
+    except Exception as e:
+        # 降级：尝试单行表头
+        logger.warning(f"多表头读取失败，降级为单行表头: {e}")
+        file_buffer.seek(0)
+        try:
+            return pd.read_excel(file_buffer, header=0, engine=engine)
+        except Exception as e2:
+            logger.error(f"单行表头读取也失败: {e2}")
+            raise
+
+
 async def parse_dataset_task(dataset_id: str, file_path: str, filename: str):
     """
     后台任务: 解析上传的CSV/Excel文件
@@ -81,12 +265,13 @@ async def parse_dataset_task(dataset_id: str, file_path: str, filename: str):
 
                     for engine in engines_to_try:
                         try:
-                            # 尝试直接读取
-                            df = pd.read_excel(
-                                io.BytesIO(file_data),
-                                engine=engine
+                            # 使用多表头支持函数读取
+                            df = read_excel_with_multilevel_header(
+                                file_data,
+                                engine=engine,
+                                detect_headers=True
                             )
-                            logger.info(f"使用{engine}引擎解析成功")
+                            logger.info(f"使用{engine}引擎解析成功（支持多表头）")
                             break
                         except Exception as e:
                             error_msg = str(e)
@@ -110,19 +295,47 @@ async def parse_dataset_task(dataset_id: str, file_path: str, filename: str):
                                     DV.__init__ = patched_init
 
                                     try:
+                                        # 降级策略：使用openpyxl手动读取
+                                        # 注意：这个降级策略只支持单行表头，因为已经是降级路径了
                                         wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
                                         ws = wb.active
                                         data = list(ws.values)
 
                                         if data and len(data) > 0:
-                                            # 获取列名（第一行）
-                                            cols = data[0]
-
-                                            # 确保列名是字符串列表
-                                            cols = [str(col) if col is not None else f'Column_{i}' for i, col in enumerate(cols)]
-
-                                            # 获取数据行（从第二行开始）
-                                            rows = data[1:]
+                                            # 尝试检测多表头（简单版本）
+                                            # 检查前两行，如果有大量空值，可能是多表头
+                                            if len(data) >= 2:
+                                                first_row = data[0]
+                                                second_row = data[1]
+                                                null_count = sum(1 for val in first_row if val is None or val == '')
+                                                
+                                                # 如果第一行空值多，尝试合并前两行
+                                                if null_count > len(first_row) * 0.3:
+                                                    # 合并表头：用第二行填充第一行的空值
+                                                    merged_cols = []
+                                                    for i, (first_val, second_val) in enumerate(zip(first_row, second_row)):
+                                                        if first_val and str(first_val).strip():
+                                                            if second_val and str(second_val).strip():
+                                                                merged_cols.append(f"{first_val}_{second_val}")
+                                                            else:
+                                                                merged_cols.append(str(first_val))
+                                                        elif second_val and str(second_val).strip():
+                                                            merged_cols.append(str(second_val))
+                                                        else:
+                                                            merged_cols.append(f'Column_{i}')
+                                                    cols = merged_cols
+                                                    rows = data[2:]  # 从第三行开始
+                                                    logger.info("检测到多表头，已合并（降级模式）")
+                                                else:
+                                                    # 单行表头
+                                                    cols = data[0]
+                                                    cols = [str(col) if col is not None else f'Column_{i}' for i, col in enumerate(cols)]
+                                                    rows = data[1:]
+                                            else:
+                                                # 数据不足，使用单行表头
+                                                cols = data[0]
+                                                cols = [str(col) if col is not None else f'Column_{i}' for i, col in enumerate(cols)]
+                                                rows = data[1:]
 
                                             # 确保每行数据长度与列数一致
                                             clean_rows = []

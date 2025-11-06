@@ -35,6 +35,7 @@ class SysConversationMessage(Base):
     conversation_id = Column(Integer, ForeignKey('sys_conversation.id', ondelete='CASCADE'), nullable=False, index=True, comment='会话ID')
     role = Column(SQLEnum(MessageRoleEnum), nullable=False, comment='消息角色')
     content = Column(Text, nullable=False, comment='消息内容')
+    analysis = Column(Text, comment='分析结果(string字符串)')
     chart_data = Column(Text, comment='图表数据(JSON字符串)')
     chart_type = Column(String(50), comment='图表类型(bar/line/pie/doughnut)')
     tokens_used = Column(Integer, comment='使用的token数量')

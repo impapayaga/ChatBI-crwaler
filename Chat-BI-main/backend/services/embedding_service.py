@@ -11,6 +11,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 import httpx
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +24,88 @@ _collection_name_cache: Optional[str] = None
 # 初始化Qdrant客户端
 qdrant_client = None
 try:
-    qdrant_client = QdrantClient(url=settings.QDRANT_URL)
-    logger.info(f"Qdrant客户端初始化成功: {settings.QDRANT_URL}")
+    # 检查是否使用localhost，如果是则禁用代理
+    # Qdrant客户端底层使用httpx，会自动使用系统代理
+    # 但localhost连接不应该使用代理，会导致502错误
+    import os
+    import httpx as httpx_module
+    
+    # 检查是否使用localhost
+    is_localhost = any(host in settings.QDRANT_URL for host in ['localhost', '127.0.0.1', '0.0.0.0'])
+    
+    if is_localhost:
+        # 本地服务：临时设置NO_PROXY环境变量，禁用代理
+        original_no_proxy = os.environ.get('NO_PROXY', '')
+        original_no_proxy_lower = os.environ.get('no_proxy', '')
+        
+        # 添加localhost到NO_PROXY
+        no_proxy_values = ['localhost', '127.0.0.1', '0.0.0.0', '*.local']
+        if original_no_proxy:
+            no_proxy_values.extend(original_no_proxy.split(','))
+        os.environ['NO_PROXY'] = ','.join(no_proxy_values)
+        os.environ['no_proxy'] = ','.join(no_proxy_values)
+        
+        # 尝试创建禁用代理的httpx客户端
+        try:
+            # QdrantClient可能支持httpx_client参数
+            custom_httpx_client = httpx_module.Client(
+                proxies=None,  # 明确禁用代理
+                timeout=httpx_module.Timeout(30.0, connect=10.0),
+                verify=True
+            )
+            # 尝试使用httpx_client参数（如果支持）
+            try:
+                qdrant_client = QdrantClient(
+                    url=settings.QDRANT_URL,
+                    check_compatibility=False,
+                    httpx_client=custom_httpx_client
+                )
+                logger.info(f"Qdrant客户端初始化成功（使用自定义httpx客户端，禁用代理）: {settings.QDRANT_URL}")
+            except TypeError:
+                # 如果不支持httpx_client参数，使用默认方式（依赖NO_PROXY环境变量）
+                qdrant_client = QdrantClient(
+                    url=settings.QDRANT_URL,
+                    check_compatibility=False
+                )
+                logger.info(f"Qdrant客户端初始化成功（通过NO_PROXY禁用代理）: {settings.QDRANT_URL}")
+        finally:
+            # 恢复原始环境变量（可选，因为NO_PROXY对系统无害）
+            # os.environ['NO_PROXY'] = original_no_proxy
+            # os.environ['no_proxy'] = original_no_proxy_lower
+            pass
+    else:
+        # 远程服务：使用默认配置
+        qdrant_client = QdrantClient(
+            url=settings.QDRANT_URL,
+            check_compatibility=False
+        )
+        logger.info(f"Qdrant客户端初始化成功: {settings.QDRANT_URL}")
 except Exception as e:
     logger.error(f"Qdrant客户端初始化失败: {e}")
+
+
+def _check_qdrant_health() -> bool:
+    """
+    检查Qdrant服务健康状态
+    
+    Returns:
+        服务可用返回True，否则返回False
+    """
+    if not qdrant_client:
+        return False
+    
+    try:
+        # 尝试获取collections列表，这是最轻量的操作
+        qdrant_client.get_collections()
+        return True
+    except Exception as e:
+        error_msg = str(e).lower()
+        # 502, 503, 504等错误说明服务不可用
+        if any(code in error_msg for code in ['502', '503', '504', 'connection', 'timeout']):
+            logger.warning(f"Qdrant服务健康检查失败: {e}")
+        else:
+            logger.error(f"Qdrant服务健康检查失败: {e}")
+        return False
 
 
 async def _get_embedding_config():
@@ -180,38 +259,100 @@ def _build_collection_name_for_dim(base_name: str, dim: Optional[int]) -> str:
     return base_name if not dim else f"{base_name}_{dim}"
 
 
-def _ensure_collection_with_dim(collection_name: str, dim: int) -> bool:
+def _ensure_collection_with_dim(collection_name: str, dim: int, max_retries: int = 3) -> bool:
+    """
+    确保Qdrant collection存在（带重试机制）
+    
+    Args:
+        collection_name: collection名称
+        dim: 向量维度
+        max_retries: 最大重试次数（默认3次）
+    
+    Returns:
+        成功返回True，失败返回False
+    """
     if not qdrant_client:
+        logger.error("Qdrant客户端未初始化")
         return False
-    try:
-        collections = qdrant_client.get_collections().collections
-        names = [c.name for c in collections]
-        if collection_name not in names:
-            qdrant_client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
-            )
-            logger.info(f"Qdrant collection已创建: {collection_name}, 维度: {dim}")
-            return True
+    
+    # 先检查服务健康状态
+    if not _check_qdrant_health():
+        logger.warning("Qdrant服务健康检查失败，但将继续尝试...")
+    
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            # 尝试获取所有collections
+            collections = qdrant_client.get_collections().collections
+            names = [c.name for c in collections]
+            
+            if collection_name not in names:
+                # 创建新的collection
+                qdrant_client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
+                )
+                logger.info(f"Qdrant collection已创建: {collection_name}, 维度: {dim}")
+                return True
 
-        info = qdrant_client.get_collection(collection_name)
-        existing_dim = info.config.params.vectors.size
-        points_count = info.points_count
-        if existing_dim == dim:
-            return True
-        if points_count == 0:
-            qdrant_client.delete_collection(collection_name)
-            qdrant_client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
-            )
-            logger.info(f"Qdrant collection已按新维度重建: {collection_name}, 维度: {dim}")
-            return True
-        logger.error(f"Qdrant集合维度不匹配且非空: {collection_name}, 期望: {dim}, 实际: {existing_dim}, points: {points_count}")
-        return False
-    except Exception as e:
-        logger.error(f"检查/创建维度化Qdrant collection失败: {e}")
-        return False
+            # 检查现有collection的维度
+            info = qdrant_client.get_collection(collection_name)
+            existing_dim = info.config.params.vectors.size
+            points_count = info.points_count
+            
+            if existing_dim == dim:
+                # 维度匹配，直接返回成功
+                return True
+            
+            if points_count == 0:
+                # 集合为空，可以重建
+                qdrant_client.delete_collection(collection_name)
+                qdrant_client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(size=dim, distance=Distance.COSINE)
+                )
+                logger.info(f"Qdrant collection已按新维度重建: {collection_name}, 维度: {dim}")
+                return True
+            
+            # 维度不匹配且集合非空，这是永久错误，不重试
+            logger.error(f"Qdrant集合维度不匹配且非空: {collection_name}, 期望: {dim}, 实际: {existing_dim}, points: {points_count}")
+            return False
+            
+        except Exception as e:
+            last_exception = e
+            error_msg = str(e)
+            
+            # 判断是否为临时错误（可重试）
+            is_retryable = any(indicator in error_msg.lower() for indicator in [
+                '502', '503', '504',  # HTTP错误
+                'bad gateway', 'service unavailable', 'gateway timeout',
+                'connection', 'timeout', 'network',
+                'unexpected response', 'raw response content'
+            ])
+            
+            if is_retryable and attempt < max_retries - 1:
+                # 指数退避：第1次等2秒，第2次等4秒
+                wait_time = 2 ** attempt
+                logger.warning(
+                    f"Qdrant连接失败（尝试 {attempt + 1}/{max_retries}），"
+                    f"{wait_time}秒后重试: {error_msg[:200]}"
+                )
+                time.sleep(wait_time)
+            else:
+                # 不可重试的错误或已达到最大重试次数
+                if attempt >= max_retries - 1:
+                    logger.error(
+                        f"检查/创建维度化Qdrant collection失败（已重试{max_retries}次）: {error_msg}"
+                    )
+                else:
+                    logger.error(f"检查/创建维度化Qdrant collection失败（不可重试）: {error_msg}")
+                return False
+    
+    # 所有重试都失败
+    if last_exception:
+        logger.error(f"Qdrant collection检查/创建最终失败: {last_exception}")
+    return False
 
 
 async def _get_or_prepare_collection_name() -> Optional[str]:
@@ -229,29 +370,73 @@ async def _get_or_prepare_collection_name() -> Optional[str]:
     _collection_name_cache = collection_name
     return _collection_name_cache
 
-def _ensure_collection():
-    """确保Qdrant collection存在"""
+def _ensure_collection(max_retries: int = 3) -> bool:
+    """
+    确保Qdrant collection存在（带重试机制）
+    
+    Args:
+        max_retries: 最大重试次数（默认3次）
+    
+    Returns:
+        成功返回True，失败返回False
+    """
     if not qdrant_client:
+        logger.error("Qdrant客户端未初始化")
         return False
 
-    try:
-        collections = qdrant_client.get_collections().collections
-        collection_names = [c.name for c in collections]
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            collections = qdrant_client.get_collections().collections
+            collection_names = [c.name for c in collections]
 
-        if settings.QDRANT_COLLECTION_NAME not in collection_names:
-            # 创建collection
-            qdrant_client.create_collection(
-                collection_name=settings.QDRANT_COLLECTION_NAME,
-                vectors_config=VectorParams(
-                    size=settings.EMBEDDING_DIMENSION,
-                    distance=Distance.COSINE
+            if settings.QDRANT_COLLECTION_NAME not in collection_names:
+                # 创建collection
+                qdrant_client.create_collection(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    vectors_config=VectorParams(
+                        size=settings.EMBEDDING_DIMENSION,
+                        distance=Distance.COSINE
+                    )
                 )
-            )
-            logger.info(f"Qdrant collection已创建: {settings.QDRANT_COLLECTION_NAME}")
-        return True
-    except Exception as e:
-        logger.error(f"检查/创建Qdrant collection失败: {e}")
-        return False
+                logger.info(f"Qdrant collection已创建: {settings.QDRANT_COLLECTION_NAME}")
+            return True
+            
+        except Exception as e:
+            last_exception = e
+            error_msg = str(e)
+            
+            # 判断是否为临时错误（可重试）
+            is_retryable = any(indicator in error_msg.lower() for indicator in [
+                '502', '503', '504',  # HTTP错误
+                'bad gateway', 'service unavailable', 'gateway timeout',
+                'connection', 'timeout', 'network',
+                'unexpected response', 'raw response content'
+            ])
+            
+            if is_retryable and attempt < max_retries - 1:
+                # 指数退避：第1次等2秒，第2次等4秒
+                wait_time = 2 ** attempt
+                logger.warning(
+                    f"Qdrant连接失败（尝试 {attempt + 1}/{max_retries}），"
+                    f"{wait_time}秒后重试: {error_msg[:200]}"
+                )
+                time.sleep(wait_time)
+            else:
+                # 不可重试的错误或已达到最大重试次数
+                if attempt >= max_retries - 1:
+                    logger.error(
+                        f"检查/创建Qdrant collection失败（已重试{max_retries}次）: {error_msg}"
+                    )
+                else:
+                    logger.error(f"检查/创建Qdrant collection失败（不可重试）: {error_msg}")
+                return False
+    
+    # 所有重试都失败
+    if last_exception:
+        logger.error(f"Qdrant collection检查/创建最终失败: {last_exception}")
+    return False
 
 
 async def generate_column_embeddings(dataset_id: str, schema_info: List[Dict[str, Any]]):

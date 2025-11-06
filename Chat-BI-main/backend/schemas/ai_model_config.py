@@ -5,7 +5,7 @@ from datetime import datetime
 
 class AIModelConfigBase(BaseModel):
     """AI模型配置基础模型"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 
     config_name: str = Field(..., min_length=1, max_length=100, description="配置名称", alias="configName")
     provider: Optional[str] = Field(None, max_length=50, description="模型提供商")
@@ -28,7 +28,7 @@ class AIModelConfigCreate(AIModelConfigBase):
 
 class AIModelConfigUpdate(BaseModel):
     """更新AI模型配置的请求模型"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 
     config_name: Optional[str] = Field(None, min_length=1, max_length=100, description="配置名称", alias="configName")
     provider: Optional[str] = Field(None, max_length=50, description="模型提供商")
@@ -46,7 +46,7 @@ class AIModelConfigUpdate(BaseModel):
 
 class AIModelConfigResponse(AIModelConfigBase):
     """AI模型配置响应模型"""
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True, protected_namespaces=())
 
     id: int = Field(..., description="配置ID")
     user_id: int = Field(..., description="用户ID", alias="userId")
