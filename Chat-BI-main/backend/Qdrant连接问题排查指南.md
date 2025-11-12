@@ -227,3 +227,6 @@ curl http://localhost:6333/collections
 4. **健康检查**：在docker-compose中添加healthcheck（可选）
 
 
+
+
+
