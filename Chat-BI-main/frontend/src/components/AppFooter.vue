@@ -1,6 +1,6 @@
 <template>
   <v-footer app>
-    <span>&copy; 2025-1-7 Luohao design</span>
+    <span>&copy; 2025 北京市教育考试院</span>
   </v-footer>
 </template>
 

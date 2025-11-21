@@ -21,7 +21,7 @@
       <div class="center-content">
         <!-- 欢迎卡片 -->
         <div class="welcome-section">
-          <v-card title="欢迎使用珠海科技局 Chat BI" subtitle="这是一个实验环境，回答可能有误，请注意甄别!">
+          <v-card title="欢迎使用北京市教育考试院智能问数系统" subtitle="这是一个实验环境，回答可能有误，请注意甄别!">
             <template v-slot:prepend>
               <v-icon color="primary" size="large">mdi-message-text</v-icon>
             </template>

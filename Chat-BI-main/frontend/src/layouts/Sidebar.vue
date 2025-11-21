@@ -13,8 +13,8 @@
         <v-icon :size="miniVariant ? 20 : 32">mdi-chart-bar</v-icon>
       </v-avatar>
       <div v-if="!miniVariant" class="logo-text">
-        <h3>Chat BI</h3>
-        <p class="text-caption">Luohao Lab</p>
+        <h3>智能问数系统</h3>
+        <p class="text-caption">北京市教育考试院</p>
       </div>
     </div>
 

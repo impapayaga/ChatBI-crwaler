@@ -27,7 +27,7 @@
     <v-avatar size="32" color="white" class="mx-2">
       <v-icon color="primary" size="20">mdi-chart-bar</v-icon>
     </v-avatar>
-    <v-toolbar-title class="text-h6">Chat BI</v-toolbar-title>
+    <v-toolbar-title class="text-h6">智能问数系统</v-toolbar-title>
 
     <v-spacer></v-spacer>
 

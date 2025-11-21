@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  db:
+    image: postgres:15
+    container_name: chatbi-postgres-prod
+    environment:
+      POSTGRES_DB: chabi_template
+      POSTGRES_USER: aigcgen
+      POSTGRES_PASSWORD: '你的数据库密码'  # ⚠️ 必须修改为强密码！
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aigcgen"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存
+  redis:
+    image: redis:6.2
+    container_name: chatbi-redis-prod
+    ports:
+      - "6388:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO对象存储
+  minio:
+    image: minio/minio:latest
+    container_name: chatbi-minio-prod
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin  # ⚠️ 必须修改为强密码！
+      MINIO_ROOT_PASSWORD: minioadmin123  # ⚠️ 必须修改为强密码！
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Qdrant向量数据库
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: chatbi-qdrant-prod
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ChatBI后端服务
+  chatbi-backend:
+    image: chatbi-backend:latest
+    container_name: chatbi-backend-prod
+    ports:
+      - "11434:11434"
+    environment:
+      - DBHOST=db
+      - DBPORT=5432
+      - DBNAME=chabi_template
+      - DBUSER=aigcgen
+      - DBPGPASSWORD=你的数据库密码  # ⚠️ 必须修改！
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin  # ⚠️ 必须修改！
+      - MINIO_SECRET_KEY=minioadmin123  # ⚠️ 必须修改！
+      - MINIO_BUCKET=chatbi-datasets
+      - MINIO_SECURE=False
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION_NAME=chatbi_columns
+      - OPENAI_API_KEY=sk-htjoiirxczzfbhbanimwmwmlmhafzthacgubydjjpmtwbseo  # ⚠️ 必须修改！
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - EMBEDDING_DIMENSION=1536
+      - FASTAPI_HOST=0.0.0.0
+      - FASTAPI_PORT=11434
+      - FRONTEND_URL=http://服务器IP:80  # ⚠️ 替换为实际服务器IP或域名
+      - SECRET_KEY=你的密钥  # ⚠️ 必须修改为强密钥！
+      - TOKEN_EXPIRE_MINUTES=30
+      - MAX_UPLOAD_SIZE=104857600
+      - PYTHONPATH=/app
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Crawler后端服务（生产环境已禁用，保留配置以便后续启用）
+  # crawler-backend:
+  #   image: crawler-backend:latest
+  #   container_name: crawler-backend-prod
+  #   ports:
+  #     - "8001:8001"
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #   volumes:
+  #     - ./crawler_data:/app/data
+  #   restart: unless-stopped
+
+  # ChatBI前端服务
+  chatbi-frontend:
+    image: chatbi-frontend:latest
+    container_name: chatbi-frontend-prod
+    ports:
+      - "80:80"
+    depends_on:
+      - chatbi-backend
+      # - crawler-backend  # 已禁用爬虫服务
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  qdrant_data:
+

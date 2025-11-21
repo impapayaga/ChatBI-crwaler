@@ -18,12 +18,14 @@ export const navigationMenus: NavigationItem[] = [
     to: '/',
     tooltip: '对话'
   },
-  {
-    title: '数据爬取管理',
-    icon: 'mdi-spider-web',
-    to: '/scraper-management',
-    tooltip: '数据爬取管理'
-  },
+  // 数据爬取管理功能（生产环境已禁用，保留代码以便后续启用）
+  // {
+  //   title: '数据爬取管理',
+  //   icon: 'mdi-spider-web',
+  //   to: '/scraper-management',
+  //   tooltip: '数据爬取管理',
+  //   disabled: true
+  // },
   {
     title: 'AI模型配置',
     icon: 'mdi-tune-variant',
